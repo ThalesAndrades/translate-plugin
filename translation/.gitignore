@@ -1,0 +1,8 @@
+# Ignore intermediate/working PDFs but keep the deliverable tracked
+*.pdf
+!Conditions_de_matricula_2026-2027_PT-BR.pdf
+# Generated intermediates
+blocks.json
+blocks2.json
+*.output
+__pycache__/
