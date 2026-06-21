@@ -1,6 +1,5 @@
-import json, re, glob, sys
+import json, re, glob
 runs=json.load(open("translation/runs.json"))
-# load all translation batches: lines "rid<TAB>pt"
 tr={}
 for fn in sorted(glob.glob("translation/tr_*.tsv")):
     for line in open(fn):
@@ -11,18 +10,19 @@ for fn in sorted(glob.glob("translation/tr_*.tsv")):
         except: continue
         tr[rid]=pt
 DOT=re.compile(r'(\s*\.{3,}[\s.]*\d+\s*)$')
+def lead_ws(s):  return s[:len(s)-len(s.lstrip())]
+def trail_ws(s): return s[len(s.rstrip()):]
 out={}
-missing=[]
 for i,src in enumerate(runs):
+    if i not in tr:
+        out[str(i)]=src; continue
+    core=tr[i]
     m=DOT.search(src)
-    if i in tr:
-        val=tr[i]
-        if m:
-            val=DOT.sub('', val).rstrip()+m.group(1)
-        out[str(i)]=val
-    else:
-        # passthrough (trivial / untranslated). keep source as-is.
-        out[str(i)]=src
-        # record genuinely-untranslated non-trivial for reporting
+    if m:
+        out[str(i)]=DOT.sub('',core).rstrip()+m.group(1); continue
+    lead=lead_ws(src); trail=trail_ws(src)
+    if trail=="" and src.rstrip()[-1:] in ("’","'","‘","-","–","—"):
+        trail=" "
+    out[str(i)]=lead+core.strip()+trail
 json.dump(out, open("translation/trans.json","w"), ensure_ascii=False)
-print("runs:",len(runs),"translated entries:",len(tr))
+print("runs:",len(runs),"translated:",len(tr))
