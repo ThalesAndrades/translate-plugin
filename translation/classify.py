@@ -1,6 +1,15 @@
-import json, re
-runs=json.load(open("translation/runs.json"))
+"""Stage 3 of the translation pipeline: classify runs needing translation.
+
+Reads ``translation/runs.json`` and writes ``translation/need.tsv`` listing the
+``index<TAB>text`` pairs of runs that contain genuine translatable text (i.e.
+not pure numbers, punctuation, URLs or short codes), which a human then
+translates into the ``tr_*.tsv`` files.
+"""
+import json, re, csv, os
+with open("translation/runs.json", encoding="utf-8") as fh:
+    runs=json.load(fh)
 def trivial(t):
+    """Return True if run text ``t`` needs no translation (numbers/codes/URLs)."""
     s=t.strip()
     if s=="" : return True
     if re.fullmatch(r'[\d\W_]+', s): return True           # only digits/punct/space
@@ -14,7 +23,8 @@ def trivial(t):
 need=[(i,t) for i,t in enumerate(runs) if not trivial(t)]
 print("total runs:",len(runs),"need-translation:",len(need),
       "chars-to-translate:",sum(len(t) for _,t in need))
-with open("translation/need.tsv","w") as f:
-    for i,t in need: f.write(f"{i}\t{t}\n")
-import os
+with open("translation/need.tsv","w",encoding="utf-8",newline="") as f:
+    w=csv.writer(f, delimiter="\t", lineterminator="\n")
+    for i,t in need:
+        w.writerow([i,t])
 print("need.tsv bytes:",os.path.getsize("translation/need.tsv"))

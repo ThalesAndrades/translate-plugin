@@ -1,11 +1,26 @@
-import json, statistics
-blocks=json.load(open("translation/blocks.json"))
+"""Stage 2 of the translation pipeline: normalise spans into coherent runs.
 
-def skey(r): return (r["size"],r["color"],r["bold"],r["italic"],r["fam"],r["link"],r["linkpage"])
-def unionbb(a,b): return [min(a[0],b[0]),min(a[1],b[1]),max(a[2],b[2]),max(a[3],b[3])]
+Reads ``translation/blocks.json`` and writes ``translation/blocks2.json`` (the
+per-block item stream) and ``translation/runs.json`` (the deduplicated list of
+unique run texts). Adjacent same-style spans are merged, small-caps heading
+letters and apostrophe/hyphen-suffix fragments are absorbed, and flowing
+paragraphs are joined with hyphenation-aware concatenation so each run is a
+coherent, independently translatable phrase.
+"""
+import json, statistics
+with open("translation/blocks.json", encoding="utf-8") as fh:
+    blocks=json.load(fh)
+
+def skey(r):
+    """Return a style key used to decide whether two runs can be merged."""
+    return (r["size"],r["color"],r["bold"],r["italic"],r["fam"],r["link"],r["linkpage"])
+def unionbb(a,b):
+    """Return the union bounding box of two ``[x0,y0,x1,y1]`` rectangles."""
+    return [min(a[0],b[0]),min(a[1],b[1]),max(a[2],b[2]),max(a[3],b[3])]
 
 run_texts={}; run_list=[]
 def run_id(t):
+    """Intern run text ``t`` and return its stable integer index."""
     if t not in run_texts:
         run_texts[t]=len(run_list); run_list.append(t)
     return run_texts[t]
@@ -57,6 +72,7 @@ for b in blocks:
         L.append({"runs":runs,"blank":blank,"fill":fill})
     nonblank=[l for l in L if not l["blank"]]
     def is_bullet(txt):
+        """Return True if a line's text starts with a bullet or numbered marker."""
         t=txt.lstrip()
         return t[:1] in ("•","◦","▪","‣","-","–") or (len(t)>=2 and t[0].isdigit() and t[1] in ".)")
     has_bullet=any(is_bullet("".join(x["text"] for x in l["runs"])) for l in nonblank)
@@ -67,6 +83,7 @@ for b in blocks:
     spanrects=[ [round(v,1) for v in s["bbox"]] for line in b["lines"] for s in line if s["text"].strip()]
 
     def emit_run(r):
+        """Append run ``r`` to the current block's item stream."""
         st={"size":r["size"],"color":r["color"],"bold":r["bold"],"italic":r["italic"],
             "fam":r["fam"],"link":r["link"],"linkpage":r["linkpage"],"sc":r.get("smallcaps",False)}
         items.append({"t":"run","rid":run_id(r["text"]),"st":st})
@@ -75,6 +92,7 @@ for b in blocks:
         pend=[None]   # pending run dict, emitted only when finalized
         started=False
         def flush():
+            """Emit the pending merged run, if any, and reset it."""
             if pend[0] is not None:
                 emit_run(pend[0]); pend[0]=None
         for l in L:
@@ -120,7 +138,9 @@ for b in blocks:
     for k in ("lines",): b.pop(k,None)
     out.append(b)
 
-json.dump(out, open("translation/blocks2.json","w"), ensure_ascii=False)
-json.dump(run_list, open("translation/runs.json","w"), ensure_ascii=False, indent=0)
+with open("translation/blocks2.json","w",encoding="utf-8") as fh:
+    json.dump(out, fh, ensure_ascii=False)
+with open("translation/runs.json","w",encoding="utf-8") as fh:
+    json.dump(run_list, fh, ensure_ascii=False, indent=0)
 print("blocks:",len(out),"unique runs:",len(run_list),
       "run chars:",sum(len(t) for t in run_list))

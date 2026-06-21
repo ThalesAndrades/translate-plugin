@@ -1,12 +1,32 @@
+"""Stage 1 of the translation pipeline: extract styled text runs.
+
+Opens the source PDF and writes ``translation/blocks.json`` containing, for
+every page, the text blocks as structured run records (text, bbox, font size,
+colour, bold/italic, font family, hyperlink target) plus per-block alignment
+and reflow heuristics.
+
+Usage::
+
+    python translation/extract.py [SOURCE_PDF]
+
+The source PDF path may be passed as the first CLI argument; otherwise it falls
+back to the document this pipeline was built for.
+"""
+import sys
 import fitz, json, statistics
-SRC="/root/.claude/uploads/0c155b62-5bbe-5506-9bc4-6ffe9b540090/35f78d18-Conditions_dimmatriculation_20262027.pdf"
-doc=fitz.open(SRC)
+
+DEFAULT_SRC = "/root/.claude/uploads/0c155b62-5bbe-5506-9bc4-6ffe9b540090/35f78d18-Conditions_dimmatriculation_20262027.pdf"
+SRC = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_SRC
+doc = fitz.open(SRC)
 
 def is_bold(s):
+    """Return True if span ``s`` is bold (by render flag or font name)."""
     return bool(s["flags"] & 16) or "Bold" in s["font"] or "bold" in s["font"].lower()
 def is_italic(s):
+    """Return True if span ``s`` is italic/oblique (by render flag or font name)."""
     return bool(s["flags"] & 2) or "Italic" in s["font"] or "Oblique" in s["font"]
 def fam(font):
+    """Normalise a raw font name to a coarse family key used by the renderer."""
     f=font.lower()
     if "courier" in f: return "mono"
     if "cambria" in f: return "cambria"
@@ -75,5 +95,6 @@ for pno,page in enumerate(doc):
             "lines":line_objs,
         })
 
-json.dump(blocks_out, open("translation/blocks.json","w"), ensure_ascii=False)
+with open("translation/blocks.json", "w", encoding="utf-8") as fh:
+    json.dump(blocks_out, fh, ensure_ascii=False)
 print("blocks:",len(blocks_out))
