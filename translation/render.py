@@ -91,6 +91,17 @@ def build_html(b):
 
 doc=fitz.open(SRC)
 errors=[]
+def down_limit(b, pb, page_h):
+    """Largest bottom Y a block may use: top of the next block below it in its column."""
+    x0,y0,x1,y1=b["bbox"]
+    lim=page_h-2
+    for o in pb:
+        if o is b:
+            continue
+        ox0,oy0,ox1,oy1=o["bbox"]
+        if oy0 >= y1-2 and ox1 > x0+2 and ox0 < x1-2:   # below and horizontally overlapping
+            lim=min(lim, oy0-1.0)
+    return max(lim, y1)   # never shorter than the original box
 for pno,page in enumerate(doc):
     if only and pno not in only: continue
     pb=[b for b in blocks if b["page"]==pno]
@@ -109,11 +120,15 @@ for pno,page in enumerate(doc):
                           text=fitz.PDF_REDACT_TEXT_REMOVE)
     for r in underlines:
         page.draw_rect(fitz.Rect(r.x0-0.5,r.y0-0.5,r.x1+0.5,r.y1+1.0), color=None, fill=(1,1,1))
+    page_h=page.rect.height
     for b in pb:
         x0,y0,x1,y1=b["bbox"]
-        rect=fitz.Rect(x0-0.6,y0-1.0,x1+1.5,y1+1.5)
+        # extend downward into the whitespace before the next block so the text
+        # can render at its original size instead of being shrunk to fit.
+        bottom=min(down_limit(b, pb, page_h), y1 + (y1-y0)*3 + 60)
+        rect=fitz.Rect(x0-0.6, y0-1.0, x1+1.5, max(bottom, y1+1.5))
         try:
-            page.insert_htmlbox(rect, build_html(b), css=FONTCSS, archive=ARCH, scale_low=0.4)
+            page.insert_htmlbox(rect, build_html(b), css=FONTCSS, archive=ARCH, scale_low=0.8)
         except Exception as e:
             errors.append((pno, b.get("bbox"), str(e)))
 if errors:
