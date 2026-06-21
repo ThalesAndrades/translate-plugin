@@ -38,6 +38,19 @@ for b in blocks:
             else:
                 merged.append(r); i+=1
         runs=merged
+        # merge apostrophe/quote-only runs into the preceding run (avoids stray ' in PT)
+        import re as _re
+        out2=[]
+        for r in runs:
+            st=r["text"].strip()
+            prev_hyphen = out2 and out2[-1]["text"].rstrip().endswith(("-","–","—"))
+            if out2 and (st in ("’","'","‘","`","ʼ","´","-","–","—")
+                         or _re.fullmatch(r"-[A-Za-zÀ-ÿ]{1,3}", st)
+                         or (_re.fullmatch(r"[A-Za-zÀ-ÿ]{1,3}", st) and prev_hyphen)):
+                out2[-1]["text"]+=r["text"]; out2[-1]["bbox"]=unionbb(out2[-1]["bbox"],r["bbox"])
+            else:
+                out2.append(r)
+        runs=out2
         txt="".join(x["text"] for x in runs)
         blank = txt.strip()==""
         fill = ((max(x["bbox"][2] for x in runs)-min(x["bbox"][0] for x in runs))/bw) if (runs and bw>1) else 0
@@ -59,27 +72,28 @@ for b in blocks:
         items.append({"t":"run","rid":run_id(r["text"]),"st":st})
 
     if flow:
-        prev=None
+        pend=[None]   # pending run dict, emitted only when finalized
         started=False
+        def flush():
+            if pend[0] is not None:
+                emit_run(pend[0]); pend[0]=None
         for l in L:
             if l["blank"]:
+                flush()
                 if started: items.append({"t":"para"})
-                prev=None
                 continue
             for r in l["runs"]:
-                if prev is not None and skey(prev)==skey(r):
-                    # merge across soft wrap (de-hyphenate)
-                    pt=prev["text"]
+                if pend[0] is not None and skey(pend[0])==skey(r):
+                    pt=pend[0]["text"]
                     if pt.rstrip().endswith("-") and len(pt.rstrip())>=2 and pt.rstrip()[-2].isalpha() and r["text"][:1].islower():
                         newtext=pt.rstrip()[:-1]+r["text"]
                     else:
                         newtext=(pt if pt.endswith(" ") else pt+" ")+r["text"]
-                    # update last emitted run text
-                    prev["text"]=newtext; prev["bbox"]=unionbb(prev["bbox"],r["bbox"])
-                    items[-1]["rid"]=run_id(newtext)
+                    pend[0]["text"]=newtext; pend[0]["bbox"]=unionbb(pend[0]["bbox"],r["bbox"])
                 else:
-                    emit_run(r); prev=dict(r)
+                    flush(); pend[0]=dict(r)
             started=True
+        flush()
     else:
         # build effective lines, merging a lone bullet marker into the following line
         eff=[]; pending=None
